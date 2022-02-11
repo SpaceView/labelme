@@ -17,20 +17,24 @@ from itertools import groupby
 import labelme
 from pycocotools import coco
 
+from label_file_v2 import LabelFile2
+
 try:
     import pycocotools.mask
 except ImportError:
     print("Please install pycocotools:\n\n    pip install pycocotools\n")
     sys.exit(1)
 
+
+
 # below section added bytmc
 dir_src = 'E:/EsightData/JX05ANN'
-dir_target = 'E:/EsightData/JX05ANN/labelme_coco'
+dir_target = 'E:/EsightData/JX05ANN/cofmt'
 path_label = 'E:/EsightData/JX05ANN/labels.txt'
 
 # False == polygon points; True = RLE mask
-#use_rle_format = False 
-use_rle_format = True
+use_rle_format = False 
+#use_rle_format = True
 
 def binary_mask_to_rle(binary_mask):
     rle = {'counts': [], 'size': list(binary_mask.shape)}
@@ -64,34 +68,52 @@ def binary_mask_to_rle(binary_mask):
 
 # end added bytmc
 
+# use shoelace formula to calculate the area of a polygon
+# ref. https://iq.opengenus.org/area-of-polygon-shoelace/
+# other methods ref. https://stackoverflow.com/questions/24467972/calculate-area-of-polygon-given-x-y-coordinates
+def PolyArea(x,y):
+    return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
+
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+
     parser.add_argument("--input_dir", default= dir_src, help="input annotated directory")
+
     parser.add_argument("--output_dir", default = dir_target, help="output dataset directory")
+
     #parser.add_argument("--labels", default = path_label, help="labels file", required=True)
     parser.add_argument("--labels", default = path_label, help="labels file")
-    parser.add_argument("--noviz", help="no visualization", action="store_true")
+
+    #parser.add_argument("--noviz", help="no visualization", action="store_true")
+    parser.add_argument("--noviz", default = True, help="no visualization", action="store_true")
+
+    parser.add_argument("--noseperate", default = False, help="no visualization", action="store_true")
+
     args = parser.parse_args()
 
     #if osp.exists(args.output_dir):
     #    print("Output directory already exists:", args.output_dir)
     #    sys.exit(1)        
-    #os.makedirs(args.output_dir)    
+    #os.makedirs(args.output_dir)
     if not osp.exists(args.output_dir):
         os.makedirs(args.output_dir)
-    
-    tgt_JPEG_path = osp.join(args.output_dir, "JPEGImages")
-    if not osp.exists(tgt_JPEG_path):
-        os.makedirs(tgt_JPEG_path)     # osp.join(args.output_dir, "JPEGImages")
+
+    out_PNG_path = osp.join(args.output_dir, "PNGImages")
+    if not osp.exists(out_PNG_path):
+        os.makedirs(out_PNG_path)
+
+    out_coco_path = osp.join(args.output_dir, "ann")
+    if not osp.exists(out_coco_path):
+        os.makedirs(out_coco_path)
 
     if not args.noviz:
-        tgt_VIZ_path = osp.join(args.output_dir, "Visualization")
-        if not osp.exists(tgt_VIZ_path):
-            os.makedirs(tgt_VIZ_path)  # osp.join(args.output_dir, "Visualization")
+        out_VIZ_path = osp.join(args.output_dir, "Visualization")
+        if not osp.exists(out_VIZ_path):
+            os.makedirs(out_VIZ_path)
 
-    print("Creating dataset:", args.output_dir)
+    print("creating dataset:", args.output_dir)
 
     now = datetime.datetime.now()
 
@@ -134,10 +156,11 @@ def main():
     for image_id, filename in enumerate(label_files):
         print("Generating dataset from:", filename)
 
-        label_file = labelme.LabelFile(filename=filename)
+        label_file = LabelFile2(filename=filename)
 
         base = osp.splitext(osp.basename(filename))[0]
-        out_img_file = osp.join(args.output_dir, "JPEGImages", base + ".png")
+        out_img_file = osp.join(out_PNG_path, base + ".png")
+        tgt_coco_file = osp.join(out_coco_path, base + ".json")
 
         img = labelme.utils.img_data_to_arr(label_file.imageData)
         imgviz.io.imsave(out_img_file, img)
@@ -155,6 +178,10 @@ def main():
 
         masks = {}  # for area
         segmentations = collections.defaultdict(list)  # for segmentation
+        dataset = {}
+        danns = []
+        d_id = 0
+
         for shape in label_file.shapes:
             points = shape["points"]
             label = shape["label"]
@@ -205,6 +232,46 @@ def main():
                 segmentations[instance] = rle
             else:
                 segmentations[instance].append(points)
+
+            if not args.noseperate:
+                # begin of annItem
+                annItem = {}
+                annItem['id'] = d_id
+                annItem['image_id'] = int(base)
+
+                if label not in class_name_to_id:
+                    continue
+                annItem['category_id'] = class_name_to_id[label]
+                annItem['type'] = shape_type
+                annItem['iscrowd'] = 0
+                
+                lpts = len(points)
+                xpts = points[0:lpts:2]
+                ypts = points[1:lpts:2]
+                x1, x2 = min(xpts), max(xpts)
+                y1, y2 = min(ypts), max(ypts)
+                annItem['bbox'] = [x1, y1, x2-x1, y2-y1]
+                annItem['area'] = PolyArea(xpts, ypts) 
+                annItem['segmentation'] = [points]
+
+                d_id = d_id + 1
+                danns.append(annItem)
+                # end of annItem
+
+        if not args.noseperate:
+            dataset['annotations'] = danns
+
+            dinfo = {}
+            dinfo['file_name']= label_file.imagePath
+            dinfo['width'] = label_file.imageWidth
+            dinfo['height'] = label_file.imageHeight
+            dinfo['id'] = 0
+            dataset['images'] = [dinfo]
+
+            #save seperate coco files, etc.
+            with open(tgt_coco_file, "w") as f:
+                json.dump(dataset, f)
+            print('-----> save seperate file: ', tgt_coco_file, '<-----')
 
         segmentations = dict(segmentations)
 
@@ -257,6 +324,6 @@ def main():
     with open(out_ann_file, "w") as f:
         json.dump(data, f)
 
-
 if __name__ == "__main__":
     main()
+    print("All done!")
