@@ -45,15 +45,24 @@ MASKCHAR = 255
 
 #NOTE： the root dir depends on the dir where PYTHON is executed
 #       e.g.  '../Rotated_DONE/',  'E:/img/Tr0805rot/rot/', etc.
-os.environ["DATA_ROOT_PATH"] = 'E:/EsightData/JX05ANN/resize/test/'
-os.environ["TARGET_PATH"]    = 'E:/EsightData/JX05ANN/resize/test/'
+#os.environ["DATA_ROOT_PATH"] = 
+#os.environ["TARGET_PATH"]    = 
 
-data_root = os.environ['DATA_ROOT_PATH']
-image_root = os.path.join(data_root, 'images')
-ann_root = os.path.join(data_root, 'ann')
+data_roots = [
+    'E:/EsightData/JX05ANN/resize/',
+    'E:/EsightData/JX05ANN/scale1/',
+    'E:/EsightData/JX05ANN/scale2/'
+]
 
-target_root = os.environ['TARGET_PATH']
-target_lable_root = target_root #os.path.join(target_root, 'lme')
+target_roots = [
+    'E:/EsightData/JX05ANN/resize_labelme/',
+    'E:/EsightData/JX05ANN/scale1_labelme/',
+    'E:/EsightData/JX05ANN/scale2_labelme/'
+]
+
+#image_root = data_roots[0] #os.path.join(data_root, 'images')
+#ann_root = data_roots[0]   #os.path.join(data_root, 'ann')
+#target_lable_root = target_roots[0] #os.path.join(target_root, 'lme')
 
 path_label = 'E:/EsightData/JX05ANN/labels.txt'
 
@@ -78,23 +87,20 @@ def run_fast_scandir(dir, ext):    # dir: str, ext: list
 class LabelFileError(Exception):
     pass
 
-if __name__ == "__main__":
+def coco2labelme(image_root, ann_root, target_label_root):
     #subfolders, files = run_fast_scandir(data_root, [".bmp", ".png", ".jpg", ".jpeg"])
     #for fld in subfolders:
     #    print(fld)
     if not os.path.exists(image_root):
         print('FATAL: Your image root doesnot exit!')
-        exit
+        return
 
     if not os.path.exists(ann_root):
         print('FATAL: Your coco annotation root doesnot exit!')
-        exit
+        return  
 
-    if not os.path.exists(target_root):
-        os.makedirs(target_root)
-
-    if not os.path.exists(target_lable_root):
-        os.makedirs(target_lable_root)
+    if not os.path.exists(target_label_root):
+        os.makedirs(target_label_root)
 
     onlyfiles = [f for f in listdir(image_root) if isfile(join(image_root, f)) ]
     my_imgfiles = []
@@ -142,7 +148,7 @@ if __name__ == "__main__":
         json_filepath = my_jsonPaths[i]
         if not os.path.exists(json_filepath):
             continue
-        tgt_jsonpath = json_filepath.replace(ann_root, target_lable_root)
+        tgt_jsonpath = json_filepath.replace(ann_root, target_label_root)
 
         dataset = json.load(open(json_filepath, 'r'))        
 
@@ -238,9 +244,15 @@ if __name__ == "__main__":
         with open(tgt_jsonpath, "w") as fjs:
             json.dump(tgt_data, fjs, ensure_ascii=False, indent=2)
         
-        print('--------------------------------------')
+        #print('--------------------------------------')
 
+    print('==================================================')
+
+if __name__ == "__main__":
+    for data_root, target_root in zip(data_roots, target_roots):
+        print("=====================> data_root: ", data_root, "target_root: ", target_root, " <=====================")
+        coco2labelme(data_root, data_root, target_root)       
     print('Main Done!')
-
+    
 print('All done!')
 
