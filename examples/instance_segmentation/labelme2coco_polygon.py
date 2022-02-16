@@ -28,7 +28,7 @@ except ImportError:
 
 
 # below section added bytmc
-dir_src = 'E:/EsightData/JX05ANN'
+dir_src = 'E:/EsightData/JX05ANN/org800x800'
 dir_target = 'E:/EsightData/JX05ANN/cofmt'
 path_label = 'E:/EsightData/JX05ANN/labels.txt'
 
@@ -100,7 +100,7 @@ def main():
     if not osp.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
-    out_PNG_path = osp.join(args.output_dir, "PNGImages")
+    out_PNG_path = osp.join(args.output_dir, "images")
     if not osp.exists(out_PNG_path):
         os.makedirs(out_PNG_path)
 
@@ -140,13 +140,15 @@ def main():
     )
 
     class_name_to_id = {}
+    id_to_class_name = {}    
     for i, line in enumerate(open(args.labels).readlines()):
         class_id = i - 1  # starts with -1
         class_name = line.strip()
         if class_id == -1:
             assert class_name == "__ignore__"
-            continue
+            continue        
         class_name_to_id[class_name] = class_id
+        id_to_class_name[class_id] = class_name
         data["categories"].append(
             dict(supercategory=None, id=class_id, name=class_name,)
         )
@@ -154,7 +156,7 @@ def main():
     out_ann_file = osp.join(args.output_dir, "annotations.json")
     label_files = glob.glob(osp.join(args.input_dir, "*.json"))
     for image_id, filename in enumerate(label_files):
-        print("Generating dataset from:", filename)
+        print(image_id, "/", len(label_files), ": Generating dataset from:", filename)
 
         label_file = LabelFile2(filename=filename)
 
